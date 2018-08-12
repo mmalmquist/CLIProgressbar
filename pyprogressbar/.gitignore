@@ -1,0 +1,5 @@
+**/*.pyc
+__pycache__
+progressbar.py
+_progressbar.so
+progressbar_wrap.c
