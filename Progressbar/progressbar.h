@@ -1,8 +1,6 @@
 #ifndef PROGRESSBAR_H_
 #define PROGRESSBAR_H_
 
-#include <unistd.h>
-
 typedef enum {
   pbt_no_color,
   pbt_one_color,
@@ -10,7 +8,7 @@ typedef enum {
 } ProgressbarType;
 
 typedef struct {
-  size_t rows;
+  unsigned rows;
   char left_edge;
   char right_edge;
   char fill;
@@ -27,7 +25,7 @@ extern void
 destroy_progressbar(void);
 
 extern void
-draw_progressbar(size_t row,
+draw_progressbar(unsigned row,
 		 char const *msg,
 		 double percent);
 

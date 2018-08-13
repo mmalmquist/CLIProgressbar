@@ -74,9 +74,10 @@ if __name__ == '__main__':
                         lambda i=i: progress_str[i])
 
     with progressbar(p, handler):
-        i = 0
+        j = 0
         while time.time() - t_start < duration[0]:
-            time.sleep(0.1)
-            print("Hello", i)
-            i += 1
+            for i in range(100):
+                time.sleep(0.01)
+            print("Status update %d." % j)
+            j += 1
         time.sleep(2.0)

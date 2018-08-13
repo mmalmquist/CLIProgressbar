@@ -1,16 +1,17 @@
 #define _POSIX_SOURCE
 
-#include "progressbar.h"
-#include "defs.h"
-
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
 #include <errno.h>
-#include <sys/ioctl.h>
+#include <unistd.h>
 #include <signal.h>
+#include <sys/ioctl.h>
+
+#include "progressbar.h"
+#include "defs.h"
 
 #define _N_C 6
 static char const _c_frac[_N_C][ANSI_COLOR_SIZE] = {
@@ -37,9 +38,9 @@ typedef struct {
 } ProgressbarRow;
 
 struct {
-  size_t _rows;
+  unsigned _rows;
   ProgressbarRow *_update_info;
-  pthread_mutex_t mtx;
+  pthread_mutex_t __mtx;
   char const *(*cs)(double);
 } prgbar;
 
@@ -66,14 +67,14 @@ struct sigaction sa_sigwinch;
 #define ANSI_SET_SCROLL_REGION(top, bottom) CPY_TO_BUFFER(ansi_set_scroll_region(bfr.tmp, top+1, bottom))
 #define ANSI_CURSOR_POSITION(row, col) CPY_TO_BUFFER(ansi_cursor_position(bfr.tmp, row+1, col))
 
-#define OFD stdout
-#define WRITEF(...) fprintf(OFD, __VA_ARGS__)
-#define FLUSH() fflush(OFD)
-#define FLOCK() flockfile(OFD); pthread_mutex_lock(&prgbar.mtx);
-#define FUNLOCK() pthread_mutex_unlock(&prgbar.mtx); funlockfile(OFD);
+#define __OF stdout
+#define WRITEF(...) fprintf(__OF, __VA_ARGS__)
+#define FLUSH() fflush(__OF)
+#define FLOCK() { flockfile(__OF); pthread_mutex_lock(&prgbar.__mtx); }
+#define FUNLOCK() { pthread_mutex_unlock(&prgbar.__mtx); funlockfile(__OF); }
 
-#define CHOOSE_CS() (cfg.type == pbt_frac_color	\
-		     ? progress_frac_color	\
+#define CHOOSE_CS() (cfg.type == pbt_frac_color		\
+		     ? progress_frac_color		\
 		     : cfg.type == pbt_one_color	\
 		     ? progress_one_color		\
 		     : progress_no_color)
@@ -100,7 +101,7 @@ setup_terminal_scroll_region(int top,
 {
   int i;
   
-  for (i = prgbar._rows; i-- > 0; fputc('\n', OFD));
+  for (i = prgbar._rows; i-- > 0; WRITEF("%c", '\n'));
   WRITEF(ANSI_SAVE_CURSOR);
   WRITEF("%s", ANSI_SET_SCROLL_REGION(top, bottom));
   WRITEF(ANSI_RESTORE_CURSOR);
@@ -222,7 +223,7 @@ get_default_config(void)
 }
 
 extern void
-draw_progressbar(size_t row,
+draw_progressbar(unsigned row,
 		 char const *msg,
 		 double percent)
 {
@@ -244,7 +245,7 @@ extern int
 create_progressbar(ProgressbarConfig const *pc)
 {
   ProgressbarRow *p;
-  size_t i;
+  unsigned i;
 
   if (init_sigaction(&sa_sigwinch, SIGWINCH, sigwinch_handler) == -1) {
     EXIT_SIGINIT(SIGWINCH);
@@ -271,7 +272,7 @@ extern void
 destroy_progressbar(void)
 {
   ProgressbarRow *p;
-  size_t i;
+  unsigned i;
   
   for (i = prgbar._rows; i-- > 0;) {
     WRITEF("%s" ANSI_DEL_LINE, ANSI_CURSOR_POSITION(tsize._rows - (prgbar._rows-i), 0));

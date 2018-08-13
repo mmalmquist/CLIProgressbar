@@ -21,6 +21,7 @@
 /* Ensures that the scroll region is restored on abnormal exit. */
 struct sigaction sa_sigint, sa_sigabrt, sa_sigterm;
 
+#define FREE(x) free(x); x = NULL
 #define EXIT(status, ...) { fprintf(stderr, __VA_ARGS__); exit(status); }
 #define EXIT_SIGINIT(signum) EXIT(signum, "Error initializing " #signum " handler: %s\n", strerror(errno))
 
@@ -66,7 +67,7 @@ get_time(void)
 }
 
 static void
-sleep_ms(long t_ms)
+sleep_ms(unsigned long t_ms)
 {
 #ifdef USE_NANOSLEEP
   struct timespec t_sleep;
@@ -75,46 +76,107 @@ sleep_ms(long t_ms)
   t_sleep.tv_nsec = (t_ms - t_sleep.tv_sec*1000L) * 1000000L;
   nanosleep(&t_sleep, NULL);
 #else
-  long t_us;
+  unsigned long t_us;
   unsigned int sec, usec;
   
   t_us = t_ms * 1000L;
-  if ((usec = t_us % 1000000L) > 0) { usleep(usec); }
+  if ((usec = t_us % 1000000L) > 0) {
+    if (usleep(usec)) {
+      printf("Error in usleep; %s", strerror(errno));
+      /* printf("usec: %u, t_us = %lu\n", usec, t_us); */
+    }
+  }
   if ((sec = t_us / 1000000L) > 0) { sleep(sec); }
 #endif
 }
 
-int
-main()
+typedef struct
 {
-  size_t i, j;
-  double t_start = get_time();
-  int duration[] = { 10, 5 };
+  unsigned row;
+  double t_start;
+  double t_duration;
+  char *str;
+} PBInfo;
+
+static void
+print_bars(PBInfo const *const *pbi)
+{
+  PBInfo const *p;
+
+  while ((p = *pbi++)) {
+    draw_progressbar(p->row, p->str, 100.0 * (get_time() - p->t_start) / p->t_duration);
+  }
+}
+
+static PBInfo **
+create_pbinfo(unsigned rows,
+	      char const *msg[],
+	      double const *duration)
+{
+  PBInfo **pbi;
+  unsigned i;
+  
+  pbi = (PBInfo **) calloc(rows + 1, sizeof(PBInfo *));
+  for (i = 0; i < rows; ++i) {
+    pbi[i] = (PBInfo *) calloc(1, sizeof(PBInfo));
+    pbi[i]->row = i;
+    pbi[i]->str = (char *) calloc(strlen(msg[i]) + 1, sizeof(char));
+    strcpy(pbi[i]->str, msg[i]);
+    pbi[i]->t_duration = duration[i];
+  }
+  return pbi;
+}
+
+static void
+destroy_pbinfo(PBInfo **const pbi)
+{
+  PBInfo **pp, *p;
+  
+  for (pp = pbi; (p = *pp++);) {
+    FREE(p->str);
+    FREE(p);
+  }
+  free(pbi);
+}
+
+int
+main(int argc, char **argv)
+{
+  unsigned i, j;
+  double t_start;
+  ProgressbarConfig cfg;
+  PBInfo **pbi, **pp, *p;
+  unsigned n_rows = 2;
   char const *progress_str[] = { "Progress 1", "Progress 2" };
-  size_t n_rows = 2;
+  double duration[] = { 10, 5 };
+  (void)argc; (void) argv;
 
   if (init_sigaction(&sa_sigint, SIGINT, exit_signal_handler) == -1) { EXIT_SIGINIT(SIGINT); }
   if (init_sigaction(&sa_sigabrt, SIGABRT, exit_signal_handler) == -1) { EXIT_SIGINIT(SIGABRT); }
   if (init_sigaction(&sa_sigterm, SIGTERM, exit_signal_handler) == -1) { EXIT_SIGINIT(SIGTERM); }
 
-  ProgressbarConfig cfg = get_default_config();
+  cfg = get_default_config();
   cfg.rows = 2;
   cfg.type = pbt_frac_color;
   if (create_progressbar(&cfg)) {
     fprintf(stderr, "Error creating progressbar.\n");
     return EXIT_FAILURE;
   }
+  pbi = create_pbinfo(n_rows, progress_str, duration);
+  t_start = get_time();
+  for (pp = pbi; (p = *pp++); p->t_start = t_start);
+  
   for (j = 0; get_time() - t_start < duration[0]; ++j) {
-    for (i = 0; i < n_rows; ++i) {
-      draw_progressbar(i, progress_str[i], 100.0 * (get_time() - t_start) / duration[i]);
+    for (i = 0; i < 100; i++) {
+      print_bars((PBInfo const **)pbi);
+      sleep_ms(10);
     }
-    printf("Hello %lu\n", j);
-    sleep_ms(500);
+    printf("Status update %u.\n", j);
   }
-  for (i = 0; i < n_rows; ++i) {
-    draw_progressbar(i, progress_str[i], 100.0 * (get_time() - t_start) / duration[i]);
-  }
+  print_bars((PBInfo const **)pbi);
   sleep_ms(2000);
+  
+  destroy_pbinfo(pbi);
   destroy_progressbar();
   return EXIT_SUCCESS;
 }
