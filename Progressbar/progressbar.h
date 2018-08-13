@@ -12,6 +12,7 @@ typedef struct {
   char left_edge;
   char right_edge;
   char fill;
+  char fill_last;
   char empty;
   ProgressbarType type;
 } ProgressbarConfig;

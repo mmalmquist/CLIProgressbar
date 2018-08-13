@@ -68,7 +68,7 @@ char const *ansi_set_scroll_region(char *__bfr, int top, int bottom);
 char const *ansi_cursor_position(char *__bfr, int row, int col);
 
 #ifdef _BSD_SOURCE
-#define _SNPRINTF(__bfr, max_size, ...) snprintf(__bfr, max_size, __VA_ARGS__)
+ #define _SNPRINTF(__bfr, max_size, ...) snprintf(__bfr, max_size, __VA_ARGS__)
 #elif (__STDC_VERSION__ >= 199901L) || (_XOPEN_SOURCE >= 500) || _ISOC99_SOURCE || (_POSIX_C_SOURCE >= 200112L)
  #define _SNPRINTF(__bfr, max_size, ...) snprintf(__bfr, max_size, __VA_ARGS__)
 #else

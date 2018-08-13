@@ -11,6 +11,6 @@ py:
 	gcc -c -fpic $(CFLAGS) $(CDIR)/ansi_ctrl.c -I$(IPY) -I. -o $(PDIR)/build/ansi_ctrl.o
 	gcc -c -fpic $(CFLAGS) $(PDIR)/progressbar_wrap.c -I$(IPY) -I. -o $(PDIR)/build/progressbar_wrap.o
 	gcc -shared $(CFLAGS) $(PDIR)/build/progressbar.o $(PDIR)/build/ansi_ctrl.o $(PDIR)/build/progressbar_wrap.o -o $(PDIR)/_progressbar.so
-	ln -sf ../$(PDIR) Demo/$(PDIR)
+	if [ ! -d Demo/$(PDIR) ]; then ln -s ../$(PDIR) Demo/$(PDIR); fi
 clean:
 	bash make_clean.sh

@@ -23,7 +23,7 @@ static char const _c_max[] = ANSI_BRIGHT_CYAN_FG;
 static char const _c_one[] = ANSI_GREEN_FG;
 #define _C_RST ANSI_RESTORE_FG
 
-#define DEFAULT_CONFIG_INIT { 0, '[', ']', '#', ' ', pbt_no_color }
+#define DEFAULT_CONFIG_INIT { 0, '[', ']', '#', '#', '.', pbt_no_color }
 static ProgressbarConfig default_config = DEFAULT_CONFIG_INIT, cfg = DEFAULT_CONFIG_INIT;
 
 struct {
@@ -44,11 +44,13 @@ struct {
   char const *(*cs)(double);
 } prgbar;
 
-#define PRCNT_ALLOC_SIZE 0x7
-#define PBAR_ALLOC_SIZE 0x400
+#define MAX_PRCNT_CHARS 6
+#define PRCNT_ALLOC_SIZE MAX_PRCNT_CHARS + 1
+#define MAX_PBAR_LENGTH 0x1000
+#define PBAR_ALLOC_SIZE (MAX_PBAR_LENGTH+1 + 2*ANSI_CS_ALLOC_SIZE)
 struct {
-  char progressbar[PBAR_ALLOC_SIZE];
-  char percent[PRCNT_ALLOC_SIZE];
+  char bar[PBAR_ALLOC_SIZE];
+  char pcnt[PRCNT_ALLOC_SIZE];
   char cs[ANSI_CS_ALLOC_SIZE];
   char tmp[ANSI_CS_ALLOC_SIZE];
 } bfr;
@@ -67,11 +69,11 @@ struct sigaction sa_sigwinch;
 #define ANSI_SET_SCROLL_REGION(top, bottom) CPY_TO_BUFFER(ansi_set_scroll_region(bfr.tmp, top+1, bottom))
 #define ANSI_CURSOR_POSITION(row, col) CPY_TO_BUFFER(ansi_cursor_position(bfr.tmp, row+1, col))
 
-#define __OF stdout
-#define WRITEF(...) fprintf(__OF, __VA_ARGS__)
-#define FLUSH() fflush(__OF)
-#define FLOCK() { flockfile(__OF); pthread_mutex_lock(&prgbar.__mtx); }
-#define FUNLOCK() { pthread_mutex_unlock(&prgbar.__mtx); funlockfile(__OF); }
+#define __OFILE stdout
+#define WRITEF(...) fprintf(__OFILE, __VA_ARGS__)
+#define FLUSH() fflush(__OFILE)
+#define FLOCK() { flockfile(__OFILE); pthread_mutex_lock(&prgbar.__mtx); }
+#define FUNLOCK() { pthread_mutex_unlock(&prgbar.__mtx); funlockfile(__OFILE); }
 
 #define CHOOSE_CS() (cfg.type == pbt_frac_color		\
 		     ? progress_frac_color		\
@@ -88,7 +90,7 @@ static char const *progress_no_color(double fraction);
 static char const *progress_one_color(double fraction);
 static char const *progress_frac_color(double fraction);
 static char const *prog_bar(char * const dst, char const *fill_color, int const s_fill, int const s_pbar);
-static char const *prgbar_percent(char *dst, double percent);
+static char const *prgbar_percent(char *dst, double pcnt);
 static void print_progressbar(ProgressbarRow const *p);
 
 static double clip(double v, double max, double min) { return v > max ? max : v < min ? min : v; }
@@ -172,24 +174,36 @@ prog_bar(char * const dst,
 	 int const s_pbar)
 {
   char *_dst;
-  int i;
+  int i, has_edge;
 
   _dst = dst;
-  if (fill_color) { _dst += sprintf(dst, "%s", ANSI_COLOR(fill_color)); }
-  for (i = s_fill; i-- > 0; sprintf(_dst++, "%c", cfg.fill));
-  if (fill_color) { _dst += sprintf(_dst, "%s", ANSI_COLOR(_C_RST)); }
-  for (i = s_pbar-s_fill; i-- > 0; sprintf(_dst++, "%c", cfg.empty));
+  has_edge = s_fill < s_pbar;
+  if (fill_color) {
+    _dst += _SNPRINTF(_dst, ANSI_CS_ALLOC_SIZE, "%s", ANSI_COLOR(fill_color));
+  }
+  for (i = s_fill - (has_edge ? 1 : 0); i-- > 0;) {
+    _dst += _SNPRINTF(_dst, 2, "%c", cfg.fill);
+  }
+  if (has_edge && s_fill > 0) {
+    _dst += _SNPRINTF(_dst, 2, "%c", cfg.fill_last);
+  }
+  if (fill_color) {
+    _dst += _SNPRINTF(_dst, ANSI_CS_ALLOC_SIZE, "%s", ANSI_COLOR(_C_RST));
+  }
+  for (i = s_pbar-s_fill; i-- > 0;) {
+    _dst += _SNPRINTF(_dst, 2, "%c", cfg.empty);
+  }
   return dst;
 }
 
 static char const *
 prgbar_percent(char *dst,
-	       double percent)
+	       double pcnt)
 {
-  if (percent > 100) {
+  if (pcnt > 100) {
     _SNPRINTF(dst, PRCNT_ALLOC_SIZE, ">100.0");
   } else {
-    _SNPRINTF(dst, PRCNT_ALLOC_SIZE, "%6.1f", percent);
+    _SNPRINTF(dst, PRCNT_ALLOC_SIZE, "%6.1f", pcnt);
   }
   return dst;
 }
@@ -201,16 +215,17 @@ print_progressbar(ProgressbarRow const *p)
 
   p = &prgbar._update_info[p->row];
 
-  prgbar_percent(bfr.percent, p->percent_done);
-  padding = 6;  /* everything but progress text, percent and bar */
-  s_pbar = tsize._cols - padding - (strlen(p->progress_text) + strlen(bfr.percent));
+  prgbar_percent(bfr.pcnt, p->percent_done);
+  padding = 6;	   /* everything but progress text, pcnt and bar */
+  s_pbar = min(tsize._cols - padding - (strlen(p->progress_text) + MAX_PRCNT_CHARS),
+	       MAX_PBAR_LENGTH);
   s_fill = (int) (clip(p->percent_done/100.0, 1, 0)*s_pbar + 0.5);
 
   WRITEF(ANSI_SAVE_CURSOR);
   WRITEF("%s", ANSI_CURSOR_POSITION(tsize._rows - (prgbar._rows-p->row), 0));
-  WRITEF("%s %s%% %c%s%c ", p->progress_text, bfr.percent,
+  WRITEF("%s %s%% %c%s%c ", p->progress_text, bfr.pcnt,
 	 cfg.left_edge,
-	 prog_bar(bfr.progressbar, prgbar.cs(p->percent_done/100.0), s_fill, s_pbar),
+	 prog_bar(bfr.bar, prgbar.cs(p->percent_done/100.0), s_fill, s_pbar),
 	 cfg.right_edge);
   WRITEF(ANSI_RESTORE_CURSOR);
   FLUSH();
@@ -225,7 +240,7 @@ get_default_config(void)
 extern void
 draw_progressbar(unsigned row,
 		 char const *msg,
-		 double percent)
+		 double pcnt)
 {
   ProgressbarRow *p;
   size_t n_chars;
@@ -235,7 +250,7 @@ draw_progressbar(unsigned row,
     p = &prgbar._update_info[row];
     n_chars = strlen(msg) + 1;
     p->progress_text = strncpy(realloc(p->progress_text, n_chars * sizeof(char)), msg, n_chars);
-    p->percent_done = percent;
+    p->percent_done = pcnt;
     print_progressbar(p);
   }
   FUNLOCK();

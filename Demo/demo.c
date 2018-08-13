@@ -80,12 +80,7 @@ sleep_ms(unsigned long t_ms)
   unsigned int sec, usec;
   
   t_us = t_ms * 1000L;
-  if ((usec = t_us % 1000000L) > 0) {
-    if (usleep(usec)) {
-      printf("Error in usleep; %s", strerror(errno));
-      /* printf("usec: %u, t_us = %lu\n", usec, t_us); */
-    }
-  }
+  if ((usec = t_us % 1000000L) > 0) { usleep(usec); }
   if ((sec = t_us / 1000000L) > 0) { sleep(sec); }
 #endif
 }
