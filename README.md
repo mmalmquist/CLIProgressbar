@@ -5,6 +5,13 @@ A Progressbar for commandline applications using ANSI escape codes.
   <img src="demo.png" alt="Progressbar Demo">
 </p>
 
+## Requirements
++ ANSI-compatible terminal
++ Make
++ CMake
++ Python (2.7) header files (e.g. python-dev on debian)
++ SWIG
+
 ## Fetures
 + A progressbar for commandline applications.
 + Standard output can be used a normal without overwriting the progressbar.

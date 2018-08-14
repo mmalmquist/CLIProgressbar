@@ -1,4 +1,5 @@
 **/*.pyc
+build
 __pycache__
 progressbar.py
 _progressbar.so

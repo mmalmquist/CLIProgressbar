@@ -6,6 +6,7 @@ IPY=/usr/include/python2.7
 demo: py
 	bash make_demo.sh
 py:
+	if [ ! -d $(PDIR)/build ]; then mkdir $(PDIR)/build; fi
 	swig -python $(PDIR)/progressbar.i
 	gcc -c -fpic $(CFLAGS) $(CDIR)/progressbar.c -I$(IPY) -I. -o $(PDIR)/build/progressbar.o
 	gcc -c -fpic $(CFLAGS) $(CDIR)/ansi_ctrl.c -I$(IPY) -I. -o $(PDIR)/build/ansi_ctrl.o
